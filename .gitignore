@@ -1,0 +1,4 @@
+/aipack
+*.aipk
+.aipack-*
+.aipack-unpack-*

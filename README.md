@@ -1,73 +1,51 @@
 # aipack
 
-CLI tool to compress programming projects to the limit and encrypt them for secure transfer over the network (so others cannot read the contents), then decrypt/decompress to feed into AI tools like Cursor, Claude, or Grok.
+CLI tool to compress a programming project and encrypt it for transfer, then decrypt and extract it so the sources can be fed to an AI tool.
 
 ## Features
 
-- Extreme compression: tar + zstd at best compression level (internal concurrency).
-- Strong encryption: AES-256-GCM with Argon2id key derivation from password.
-- Secure by design: path traversal protection on unpack, cryptographically secure randomness, no hardcoded secrets.
-- Production Go practices applied (from samber/cc-skills-golang):
-  - Structured concurrency & context cancellation (signals).
-  - Error wrapping with `%w`.
-  - Cobra CLI with proper flags and password prompting (hidden input).
-  - Default excludes for `.git`, `node_modules`, `vendor`, build artifacts, binaries, etc.
-  - Deterministic sorting for better compression.
+- tar + zstd, streamed into framed AES-256-GCM (version 2). The archive is not held in memory as one buffer.
+- Argon2id key derivation. Parameters are stored in the header and rejected when they exceed the production cost.
+- Version 1 archives (one GCM blob) can still be unpacked.
+- Path checks use `filepath.IsLocal` and `os.Root`. Symlinks are not followed while packing and are refused while unpacking.
+- Default excludes for `.git`, `node_modules`, `vendor`, build outputs, and binaries.
+- Password from a prompt, `AIPACK_PASSWORD`, or `-p` (the flag is warned about because it shows up in the process list).
 
 ## Build
 
+Requires Go 1.24 or newer (`os.Root`).
+
 ```bash
-cd aipack
-go mod tidy   # fetches klauspost/compress, cobra, x/crypto, x/sync, x/term
 go build -o aipack .
 ```
 
 ## Usage
 
-Pack a project:
-
 ```bash
 ./aipack pack /path/to/my-project -o myproject.aipk
-# prompts for password
-# or
-./aipack pack /path/to/my-project -o myproject.aipk -p 'your-strong-password' -w 8
-```
+# prompts for a password
 
-Transfer the `.aipk` file over the network (it looks like random data).
+AIPACK_PASSWORD='your-strong-password' ./aipack pack /path/to/my-project -o myproject.aipk
 
-Unpack:
-
-```bash
 ./aipack unpack myproject.aipk -o ./restored-project
-# prompts for password
 ```
 
-Then open `./restored-project` in Cursor or paste files into AI chat.
+`--max-bytes` defaults to 8 GiB and applies to the source size when packing and to the extracted size when unpacking. `--exclude` adds glob patterns matched against each path component. `--no-default-excludes` turns off the built-in list.
 
-## Design Notes (following cc-skills-golang)
+Exit codes: `0` success, `1` operational error, `2` usage error, `130` interrupt.
 
-- **golang-concurrency**: Context for cancellation, errgroup patterns available, zstd concurrency, no goroutine leaks.
-- **golang-security**: AES-GCM (authenticated), Argon2id, crypto/rand, constant-time ready, path traversal checks.
-- **golang-error-handling**: Always wrap errors with context.
-- **golang-cli**: Cobra, SilenceUsage/Errors, password via term.ReadPassword, signals via NotifyContext.
-- **golang-performance**: High zstd level, limited workers, streaming where possible (in-memory for typical projects).
+## Archive format (version 2)
 
-For very large projects, the in-memory tar/compress can be improved to full streaming in a future version.
+```
+magic "AIPK" | version 2 | argon2 time u32 | memory u32 | threads u8
+salt 16 | nonce prefix 8
+repeated frames: flags u8 | ciphertext length u32 | AES-GCM ciphertext
+```
 
-## Adding the Golang Skills to your AI tools
+Each frame nonce is `prefix || counter`. The last frame is authenticated as final, so a truncated file does not unpack. Pack writes a temporary file in the destination directory and renames it into place. Unpack extracts into a temporary directory and publishes it only after the archive checks out.
 
-The skills used as guidance come from https://github.com/samber/cc-skills-golang.
-
-### For Cursor (recommended, since you use it daily):
+## Tests
 
 ```bash
-git clone https://github.com/samber/cc-skills-golang.git ~/.cursor/skills/cc-skills-golang
+go test -race ./...
 ```
-
-Then restart Cursor or reload. The skills will be available on-demand for Go work.
-
-### For other tools: see the repo README (Claude Code, Gemini, Copilot, etc.).
-
-### For Grok: you can create a custom skill summarizing the key practices, or just reference the repo when generating Go code.
-
-This implementation prioritizes the concurrent, secure, production-ready patterns from those skills.
