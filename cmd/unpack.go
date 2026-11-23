@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/edwinlmm/aipack/pkg/crypto"
-	"github.com/edwinlmm/aipack/pkg/packer"
+	"github.com/edwinlmm/aipack/internal/crypto"
+	"github.com/edwinlmm/aipack/internal/packer"
 )
 
 func newUnpackCmd() *cobra.Command {

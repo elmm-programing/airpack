@@ -54,6 +54,7 @@ and fed to an AI tool.`,
 	root.AddCommand(newPackCmd())
 	root.AddCommand(newUnpackCmd())
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newCompletionCmd())
 	return root
 }
 

@@ -7,8 +7,8 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/edwinlmm/aipack/pkg/crypto"
-	"github.com/edwinlmm/aipack/pkg/packer"
+	"github.com/edwinlmm/aipack/internal/crypto"
+	"github.com/edwinlmm/aipack/internal/packer"
 )
 
 const envPassword = "AIPACK_PASSWORD"

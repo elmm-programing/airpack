@@ -21,7 +21,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/edwinlmm/aipack/pkg/crypto"
+	"github.com/edwinlmm/aipack/internal/crypto"
 )
 
 const (
@@ -482,11 +482,20 @@ func compressEncrypt(ctx context.Context, r io.Reader, dst *os.File, opts PackOp
 	if err != nil {
 		return fmt.Errorf("generate nonce: %w", err)
 	}
+	// argon2.IDKey cannot be preempted. A signal during derivation is
+	// observed here, before any ciphertext is written. Do not abandon the
+	// call in another goroutine: that would leak the KDF memory until it finishes.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	key, err := crypto.DeriveKey(password, salt, opts.KDF)
 	if err != nil {
 		return fmt.Errorf("derive key: %w", err)
 	}
 	defer crypto.Wipe(key)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	if err := writeV2Header(dst, opts.KDF, salt, prefix); err != nil {
 		return err
@@ -529,11 +538,19 @@ func decryptExtract(ctx context.Context, r io.Reader, dest string, opts UnpackOp
 	if err != nil {
 		return Result{}, err
 	}
+	// argon2.IDKey cannot be preempted. Honor cancellation before and after
+	// derivation so a signal does not start extraction.
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
 	key, err := crypto.DeriveKey(password, pre.salt, pre.params)
 	if err != nil {
 		return Result{}, fmt.Errorf("derive key: %w", err)
 	}
 	defer crypto.Wipe(key)
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
 
 	switch pre.version {
 	case versionV1:

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/edwinlmm/aipack/pkg/crypto"
+	"github.com/edwinlmm/aipack/internal/crypto"
 )
 
 const (

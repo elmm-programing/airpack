@@ -31,6 +31,17 @@ func TestRunUsageAndVersion(t *testing.T) {
 	}
 }
 
+func TestCompletionBash(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"completion", "bash"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "aipack") {
+		t.Fatalf("completion script = %q", stdout.String())
+	}
+}
+
 func TestRunRequiresPasswordWithoutTerminal(t *testing.T) {
 	dir := t.TempDir()
 	var stdout, stderr bytes.Buffer

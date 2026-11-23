@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/edwinlmm/aipack/pkg/crypto"
-	"github.com/edwinlmm/aipack/pkg/packer"
+	"github.com/edwinlmm/aipack/internal/crypto"
+	"github.com/edwinlmm/aipack/internal/packer"
 )
 
 func newPackCmd() *cobra.Command {
@@ -72,7 +72,7 @@ func newPackCmd() *cobra.Command {
 				}
 				return err
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Done. %d files, %d directories", res.Files, res.Dirs)
+			fmt.Fprintf(cmd.ErrOrStderr(), "Done. %d files, %d directories, %d bytes", res.Files, res.Dirs, res.Bytes)
 			if res.SkippedSymlinks > 0 {
 				fmt.Fprintf(cmd.ErrOrStderr(), ", %d symlinks skipped", res.SkippedSymlinks)
 			}

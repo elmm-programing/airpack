@@ -173,6 +173,49 @@ func TestChunkStreamRejectsTrailingBytes(t *testing.T) {
 	}
 }
 
+func FuzzChunkReader(f *testing.F) {
+	key := bytes.Repeat([]byte{1}, KeySize)
+	prefix := bytes.Repeat([]byte{2}, NoncePrefixSize)
+	var buf bytes.Buffer
+	w, err := NewChunkWriter(&buf, key, prefix, 2)
+	if err != nil {
+		f.Fatal(err)
+	}
+	if _, err := w.Write([]byte("seed")); err != nil {
+		f.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		f.Fatal(err)
+	}
+	f.Add(buf.Bytes())
+	f.Add([]byte{})
+	f.Add([]byte{0, 0, 0, 0, 1})
+	f.Add([]byte("not a frame"))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		reader, err := NewChunkReader(bytes.NewReader(data), key, prefix, 2, 1<<20)
+		if err != nil {
+			if !chunkSentinel(err) {
+				t.Fatalf("constructor error = %v", err)
+			}
+			return
+		}
+		_, err = io.ReadAll(reader)
+		if err != nil && !errors.Is(err, io.EOF) && !chunkSentinel(err) {
+			t.Fatalf("read error = %v", err)
+		}
+	})
+}
+
+func chunkSentinel(err error) bool {
+	return errors.Is(err, ErrAuthentication) ||
+		errors.Is(err, ErrTruncated) ||
+		errors.Is(err, ErrFormat) ||
+		errors.Is(err, ErrLimit) ||
+		errors.Is(err, ErrInvalidKey) ||
+		errors.Is(err, ErrInvalidNonce)
+}
+
 func readAllChunks(r io.Reader, key, prefix []byte, max int64) ([]byte, error) {
 	cr, err := NewChunkReader(r, key, prefix, 2, max)
 	if err != nil {

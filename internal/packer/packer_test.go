@@ -13,7 +13,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"go.uber.org/goleak"
 
-	"github.com/edwinlmm/aipack/pkg/crypto"
+	"github.com/edwinlmm/aipack/internal/crypto"
 )
 
 func TestMain(m *testing.M) {
