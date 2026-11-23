@@ -2,53 +2,73 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
-	"github.com/edwinlmm/aipack/pkg/packer"
+	"github.com/edwinlmm/aipack/internal/crypto"
+	"github.com/edwinlmm/aipack/internal/packer"
 )
 
-var unpackCmd = &cobra.Command{
-	Use:   "unpack <packed-file>",
-	Short: "Decrypt and decompress a packed project",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		input := args[0]
-		outputDir, _ := cmd.Flags().GetString("output")
-		passwordFlag, _ := cmd.Flags().GetString("password")
+func newUnpackCmd() *cobra.Command {
+	var (
+		output   string
+		password string
+		workers  int
+		maxBytes int64
+	)
 
-		if outputDir == "" {
-			outputDir = "unpacked"
-		}
+	command := &cobra.Command{
+		Use:           "unpack <packed-file>",
+		Short:         "Decrypt and extract a packed project",
+		Args:          exactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if workers < 0 {
+				return usageErr(fmt.Errorf("workers must be zero or positive"))
+			}
+			if maxBytes < 0 {
+				return usageErr(fmt.Errorf("max-bytes must be zero or positive"))
+			}
+			pw, err := resolvePassword(password, os.Stdin, cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			defer crypto.Wipe(pw)
 
-		password, err := getPassword(passwordFlag, "Enter password: ")
-		if err != nil {
-			return err
-		}
+			out := output
+			if out == "" {
+				out = "unpacked"
+			}
 
-		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer cancel()
+			ctx, stop := signalContext(cmd)
+			defer stop()
 
-		opts := packer.UnpackOptions{
-			Input:     input,
-			OutputDir: outputDir,
-			Password:  password,
-		}
+			fmt.Fprintf(cmd.ErrOrStderr(), "Unpacking %s → %s\n", args[0], out)
+			res, err := packer.Unpack(ctx, packer.UnpackOptions{
+				Input:     args[0],
+				OutputDir: out,
+				Password:  pw,
+				Workers:   workers,
+				MaxBytes:  maxBytes,
+			})
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return fmt.Errorf("interrupted: %w", err)
+				}
+				return err
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "Done. %d files, %d directories.\n", res.Files, res.Dirs)
+			return nil
+		},
+	}
 
-		fmt.Fprintf(os.Stderr, "Unpacking %s → %s...\n", input, outputDir)
-		if err := packer.Unpack(ctx, opts); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Done. Project ready to open in Cursor / feed to AI.\n")
-		return nil
-	},
-}
-
-func init() {
-	unpackCmd.Flags().StringP("output", "o", "", "output directory (default: unpacked)")
-	unpackCmd.Flags().StringP("password", "p", "", "password (prompted if empty)")
+	command.Flags().StringVarP(&output, "output", "o", "", "output directory (default: unpacked)")
+	command.Flags().StringVarP(&password, "password", "p", "", "password (visible in the process list; prefer AIPACK_PASSWORD)")
+	command.Flags().IntVarP(&workers, "workers", "w", 0, "zstd worker limit (0 uses GOMAXPROCS, capped at 8)")
+	command.Flags().Int64Var(&maxBytes, "max-bytes", packer.DefaultMaxBytes, "maximum extracted size in bytes")
+	return command
 }
